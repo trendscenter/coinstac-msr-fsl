@@ -14,7 +14,7 @@ import utils as ut
 def remote_0(args):
     input_list = args["input"]
     site_ids = sorted(list(input_list.keys()))
-    userID = list(site_ids[0])
+    userID = list(site_ids)[0]
 
     site_covar_list = [
         f'{label}' for index, label in enumerate(site_ids)
@@ -25,9 +25,8 @@ def remote_0(args):
     for userID in site_ids:
         columns_to_normalize.update(columns_to_normalize.union(input_list[userID]["columns_to_normalize"]))
 
-    site_id=site_ids[0]
-    tol = input_list[site_id]["tol"]
-    eta = input_list[site_id]["eta"]
+    tol = input_list[userID]["tol"]
+    eta = input_list[userID]["eta"]
 
     output_dict = {
         "site_covar_list": site_covar_list,
@@ -75,8 +74,10 @@ def remote_1(args):
     ]
 
     #Update initial weights based on the local beta's
+    local_X_labels=['const']
+    local_X_labels.extend(X_labels)
     augmented_X_labels=input_list[first_user_id]['augmented_X_labels']
-    for label_idx, curr_label in enumerate(X_labels):
+    for label_idx, curr_label in enumerate(local_X_labels):
         idx = augmented_X_labels.index(curr_label)
         wp[:, idx] = mean_local_betas[:, label_idx]
 
@@ -103,7 +104,7 @@ def remote_1(args):
         "vt": vt.tolist(),
         "iter_flag": iter_flag,
         "number_of_regressions": number_of_regressions,
-        "X_labels": X_labels,
+        "X_labels": local_X_labels,
         "prev_cost": prev_cost,
     }
 

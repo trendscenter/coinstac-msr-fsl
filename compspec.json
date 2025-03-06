@@ -52,7 +52,7 @@
         "source": "owner"
       },
       "eta": {
-        "default": 1000,
+        "default": 0.1,
         "label": "ETA",
         "tooltip": "ETA inital parameter setting for regression convergence",
         "type": "number",
