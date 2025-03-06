@@ -72,7 +72,7 @@ def y_estimate(biased_X, beta_vector):
     return np.dot(beta_vector, np.matrix.transpose(biased_X))
 
 
-def sum_squared_error(biased_X, y, beta_vector):
+def sum_squared_error(y, y_pred):
     """Calculates the sum of squared errors (SSE)
 
     Args:
@@ -87,7 +87,7 @@ def sum_squared_error(biased_X, y, beta_vector):
     Comments:
         SSE = ||(y - y_estimate)^2||^2 where ||.|| --> l2-norm
     """
-    return np.linalg.norm(y - y_estimate(biased_X, beta_vector))**2
+    return np.sum((y_pred - y) ** 2)
 
 
 def sum_squared_total(y):

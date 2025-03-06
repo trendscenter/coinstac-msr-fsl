@@ -14,17 +14,23 @@ import utils as ut
 def remote_0(args):
     input_list = args["input"]
     site_ids = sorted(list(input_list.keys()))
+    userID = list(site_ids)[0]
+
     site_covar_list = [
         f'{label}' for index, label in enumerate(site_ids)
         if index
-    ]  
+    ]
 
-    site_id=site_ids[0]
-    tol = input_list[site_id]["tol"]
-    eta = input_list[site_id]["eta"]
+    columns_to_normalize = set()
+    for userID in site_ids:
+        columns_to_normalize.update(columns_to_normalize.union(input_list[userID]["columns_to_normalize"]))
+
+    tol = input_list[userID]["tol"]
+    eta = input_list[userID]["eta"]
 
     output_dict = {
         "site_covar_list": site_covar_list,
+        "columns_to_normalize": list(columns_to_normalize),
         "computation_phase": "remote_0"
     }
 
@@ -45,10 +51,13 @@ def remote_1(args):
     """Need this function for performing multi-shot regression"""
     input_list = args["input"]
 
-    first_user_id = sorted(list(input_list.keys()))[0]
+    first_user_id = list(sorted(input_list.keys()))[0]
     beta_vec_size = input_list[first_user_id]["beta_vec_size"]
     number_of_regressions = input_list[first_user_id]["number_of_regressions"]
     X_labels = input_list[first_user_id]["X_labels"]
+    mean_local_betas = np.array(
+        [np.array(input_list[site]["beta_vector_local"]) for site in input_list]).mean(
+        axis=0)
 
     # Initial setup
     beta1 = 0.9
@@ -63,6 +72,16 @@ def remote_1(args):
         np.zeros((number_of_regressions, beta_vec_size), dtype=float)
         for _ in range(4)
     ]
+
+    #Update initial weights based on the local beta's
+    local_X_labels=['const']
+    local_X_labels.extend(X_labels)
+    augmented_X_labels=input_list[first_user_id]['augmented_X_labels']
+    for label_idx, curr_label in enumerate(local_X_labels):
+        idx = augmented_X_labels.index(curr_label)
+        wp[:, idx] = mean_local_betas[:, label_idx]
+
+    prev_cost = [None] * number_of_regressions
 
     iter_flag = 1
 
@@ -85,7 +104,8 @@ def remote_1(args):
         "vt": vt.tolist(),
         "iter_flag": iter_flag,
         "number_of_regressions": number_of_regressions,
-        "X_labels": X_labels,
+        "X_labels": local_X_labels,
+        "prev_cost": prev_cost,
     }
 
     computation_output = {
@@ -110,6 +130,7 @@ def remote_2(args):
     vt = args["cache"]["vt"]
     iter_flag = args["cache"]["iter_flag"]
     number_of_regressions = args["cache"]["number_of_regressions"]
+    prev_cost = args["cache"]["prev_cost"]
 
     count = count + 1
 
@@ -150,7 +171,12 @@ def remote_2(args):
 
         wc = wp - eta * m / (np.sqrt(v) + eps)
 
-        mask_flag = np.linalg.norm(wc - wp, axis=1) <= tol
+        mask_flag = np.full(number_of_regressions, False)
+
+        # Compute curr_cost
+        curr_cost = np.average(np.array([args["input"][site]["local_cost"] for site in sorted_site_ids]), axis=0)
+        if None not in prev_cost:
+            mask_flag = abs(np.array(prev_cost) - curr_cost) <= tol
 
         if sum(mask_flag) == number_of_regressions:
             iter_flag = 0
@@ -158,6 +184,7 @@ def remote_2(args):
         for i in range(mask_flag.shape[0]):
             if not mask_flag[i]:
                 wp[i] = wc[i]
+                prev_cost[i] = curr_cost[i]
 
         output_dict = {
             "remote_beta": wc.tolist(),
@@ -172,7 +199,9 @@ def remote_2(args):
             "mt": mt.tolist(),
             "vt": vt.tolist(),
             "iter_flag": iter_flag,
-            "X_labels": args["cache"]["X_labels"]
+            "X_labels": args["cache"]["X_labels"],
+            "prev_cost": prev_cost,
+            #"avg_beta_vector": wc.tolist() #TODO delete this entry.. added for debugging
         }
 
         computation_output = {
@@ -221,12 +250,10 @@ def remote_3(args):
     all_local_stats_dicts = [{
         site: input_list[site]["local_stats_list"] for site in sorted_site_ids
     }]
-    mean_y_local = [input_list[site]["mean_y_local"] for site in sorted_site_ids]
-    count_y_local = [
-        np.array(input_list[site]["count_local"]) for site in sorted_site_ids
-    ]
-    mean_y_global = np.array(mean_y_local) * np.array(count_y_local)
-    mean_y_global = np.average(mean_y_global, axis=0)
+    mean_y_local = np.array([input_list[site]["mean_y_local"] for site in input_list])
+    count_y_local = np.array([input_list[site]["count_local"] for site in input_list])
+    mean_y_global = mean_y_local * count_y_local
+    mean_y_global = mean_y_global.sum(axis=0) / count_y_local.sum(axis=0)
 
     dof_global = sum(count_y_local) - avg_beta_vector.shape[1]
 

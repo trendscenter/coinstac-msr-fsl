@@ -50,8 +50,10 @@ def gather_local_stats(X, y):
         ]
         local_stats_dict = {key: value for key, value in zip(keys, values)}
         local_stats_list.append(local_stats_dict)
+    
+    beta_vector = [l.tolist() for l in local_params]
 
-    return meanY_vector, lenY_vector, local_stats_list
+    return meanY_vector, lenY_vector, local_stats_list, beta_vector
 
 
 def add_site_covariates(args, X):
@@ -74,3 +76,22 @@ def add_site_covariates(args, X):
     augmented_X = pd.concat([biased_X, site_df], axis=1)
 
     return augmented_X
+
+def get_cost(y_actual, y_predicted):
+    return np.average((y_actual-y_predicted)**2)
+
+def check_cols_to_normalize(X):
+    columns_to_normalize=[]
+    max_vals = X.max(axis=0).to_numpy()
+    minval = np.min(max_vals[np.nonzero(max_vals)])
+    X_headers = list(X.columns)
+    ranges = max_vals / minval
+    temp_cols_indxs = np.where(ranges > 10000)[0]
+    for col_indx in temp_cols_indxs:
+        columns_to_normalize.append(X_headers[col_indx])
+    return columns_to_normalize
+
+def normalize_columns(data_df, cols):
+    for col in cols:
+        data_df[col] = (data_df[col] - data_df[col].mean())/(data_df[col].std())
+    return data_df
